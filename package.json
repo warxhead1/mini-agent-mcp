@@ -1,0 +1,39 @@
+{
+  "name": "agentic-mcp-server",
+  "version": "0.1.0",
+  "description": "Lightweight MCP server for agentic workflow coordination and task persistence",
+  "main": "dist/server.js",
+  "type": "module",
+  "scripts": {
+    "build": "tsc && cp src/db/*.sql dist/db/",
+    "start": "node dist/server.js",
+    "dev": "tsx src/server.ts",
+    "test": "jest",
+    "test:watch": "jest --watch"
+  },
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "agent",
+    "workflow",
+    "task-management"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.0",
+    "better-sqlite3": "^11.6.0"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.11",
+    "@types/jest": "^29.5.14",
+    "@types/node": "^22.10.2",
+    "jest": "^29.7.0",
+    "ts-jest": "^29.4.0",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

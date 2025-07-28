@@ -1,0 +1,1 @@
+export { FileSync } from './FileSync.js';

@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "agentic-mcp": {
+      "command": "node",
+      "args": ["/path/to/mini-agent-mcp/dist/server.js"],
+      "transport": "stdio"
+    }
+  }
+}
