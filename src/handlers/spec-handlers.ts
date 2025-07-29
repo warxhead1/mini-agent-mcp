@@ -137,6 +137,7 @@ export class SpecHandlers {
         );
       }
 
+
       // Prepare design template
       const designTemplate = this.getDesignTemplate(project.name);
       if (this.fileSync.isEnabled) {
@@ -218,6 +219,7 @@ export class SpecHandlers {
         );
       }
 
+
       // Prepare tasks template
       const tasksTemplate = this.getTasksTemplate(project.name);
       if (this.fileSync.isEnabled) {
@@ -294,6 +296,7 @@ export class SpecHandlers {
         );
       }
 
+
       // Get or create tasks if needed
       let task;
       if (taskId) {
@@ -367,7 +370,7 @@ export class SpecHandlers {
           priority: task.priority,
           phase: task.phase
         },
-        instructions: this.getExecuteInstructions(task, contexts),
+        instructions: this.getExecuteInstructions(task, contexts, project.name),
         nextStep: 'implement_task',
         context: contexts,
         progress: {
@@ -782,7 +785,7 @@ The template is at .spec/${projectName}/tasks.md
   /**
    * Get execute instructions
    */
-  private getExecuteInstructions(task: any, contexts: Record<string, any>): string {
+  private getExecuteInstructions(task: any, contexts: Record<string, any>, projectName: string): string {
     const hasRequirements = contexts.requirements && contexts.requirements.status !== 'awaiting_collaboration';
     const hasDesign = contexts.design && contexts.design.status !== 'awaiting_collaboration';
 
@@ -884,6 +887,14 @@ ${contexts.implementation ? '✅ Previous implementation context available' : '�
 - DO communicate clearly for next agent
 
 Better to adapt the plan than stub the implementation.
+
+📝 **TASK TRACKING REMINDER**: When you complete or make progress on this task:
+1. Update the checkbox in .spec/${projectName}/tasks.md (mark [x] when done)
+2. Add a note about completion/progress next to the task
+3. This helps the next agent see what's been done!
+
+Example: 
+- [x] 1. Set up database schema ✓ Completed - tables created in schema.sql
 
 🚫 ANTI-STUB QUICK REFERENCE:
 ❌ NEVER:

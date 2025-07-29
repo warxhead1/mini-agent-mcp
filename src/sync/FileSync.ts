@@ -30,6 +30,15 @@ export class FileSync {
   async writeSpecFile(projectId: string, fileName: string, content: string): Promise<void> {
     if (!this.enabled) return;
 
+    // Search for existing document first
+    const existingPath = await this.findExistingDocument(projectId, fileName);
+    if (existingPath) {
+      console.log(`Found existing ${fileName} at ${existingPath}, updating instead of creating new`);
+      await fs.writeFile(existingPath, content);
+      return;
+    }
+
+    // Create new if not found
     const specProjectDir = path.join(this.specDir, projectId);
     await fs.mkdir(specProjectDir, { recursive: true });
     await fs.writeFile(path.join(specProjectDir, fileName), content);
@@ -43,12 +52,12 @@ export class FileSync {
     
     const projectDir = path.join(this.baseDir, projectName);
     
-    // Create directories
+    // Create directories for tracking only
     await fs.mkdir(projectDir, { recursive: true });
     await fs.mkdir(path.join(projectDir, 'implementation'), { recursive: true });
     await fs.mkdir(path.join(projectDir, 'handoffs'), { recursive: true });
 
-    // Create README.md with project overview
+    // Create README.md that points to .spec/ as single source of truth
     const readmeContent = `# ${projectName}
 
 ${description || 'No description provided.'}
@@ -67,21 +76,28 @@ ${description || 'No description provided.'}
 - [ ] Tasks
 - [ ] Execute
 
-## Quick Links
+## Specifications (Single Source of Truth)
 
-- [Requirements](./requirements.md)
-- [Design](./design.md)
-- [Tasks](./tasks.md)
-- [Implementation](./implementation/)
-- [Handoffs](./handoffs/)
+All project specifications are maintained in the \`.spec/\` directory:
+
+- [Requirements](../.spec/${projectName}/requirements.md) - Feature requirements and acceptance criteria
+- [Design](../.spec/${projectName}/design.md) - Technical design and architecture  
+- [Tasks](../.spec/${projectName}/tasks.md) - Implementation task breakdown
+
+## Project Tracking
+
+- [Implementation Progress](./implementation/) - Task execution updates
+- [Phase Handoffs](./handoffs/) - Inter-phase transition documents
+
+## Notes
+
+This directory contains project tracking and progress files only. 
+**All specifications are edited in \`.spec/${projectName}/\`**
 `;
 
     await fs.writeFile(path.join(projectDir, 'README.md'), readmeContent);
 
-    // Create empty phase files
-    await fs.writeFile(path.join(projectDir, 'requirements.md'), '# Requirements\n\n*Not yet started*\n');
-    await fs.writeFile(path.join(projectDir, 'design.md'), '# Design\n\n*Not yet started*\n');
-    await fs.writeFile(path.join(projectDir, 'tasks.md'), '# Tasks\n\n*Not yet started*\n');
+    // No longer create duplicate spec files here - .spec/ is the single source
   }
 
   /**
@@ -226,31 +242,8 @@ ${update.nextSteps}
 
     await fs.writeFile(contextFile, JSON.stringify(contextData, null, 2));
 
-    // Also update the appropriate phase file with the summary
-    const phaseFile = path.join(this.baseDir, projectId, `${agentType}.md`);
-    try {
-      const existingContent = await fs.readFile(phaseFile, 'utf-8');
-      if (existingContent.includes('*Not yet started*')) {
-        // Replace placeholder with actual content
-        const newContent = `# ${agentType.charAt(0).toUpperCase() + agentType.slice(1)}
-
-## Summary
-
-${context.summary}
-
-## Details
-
-See [${agentType}-context.json](./${agentType}-context.json) for full context.
-
----
-
-*Last updated: ${new Date().toISOString()}*
-`;
-        await fs.writeFile(phaseFile, newContent);
-      }
-    } catch {
-      // File doesn't exist or other error, skip
-    }
+    // No longer update duplicate phase files - .spec/ is the single source
+    // Context is saved in the tracking directory for agent handoffs only
   }
 
   /**
@@ -313,24 +306,25 @@ ${this.getNextPhaseGuidelines(phaseData.phase)}
    */
   async readProjectHistory(projectId: string): Promise<string> {
     const projectDir = path.join(this.baseDir, projectId);
+    const specDir = path.join(this.specDir, projectId);
     const history: string[] = [];
 
     try {
-      // Read README
+      // Read project README (tracking info)
       const readme = await fs.readFile(path.join(projectDir, 'README.md'), 'utf-8');
       history.push('# Project Overview\n\n' + readme);
 
-      // Read phase files
+      // Read spec files from .spec/ directory (single source of truth)
       for (const phase of ['requirements', 'design', 'tasks']) {
         try {
-          const content = await fs.readFile(path.join(projectDir, `${phase}.md`), 'utf-8');
+          const content = await fs.readFile(path.join(specDir, `${phase}.md`), 'utf-8');
           history.push(`\n\n# ${phase.charAt(0).toUpperCase() + phase.slice(1)} Phase\n\n${content}`);
         } catch {
-          // Phase file doesn't exist
+          // Phase file doesn't exist yet
         }
       }
 
-      // Read handoff documents
+      // Read handoff documents (tracking info)
       const handoffDir = path.join(projectDir, 'handoffs');
       try {
         const handoffs = await fs.readdir(handoffDir);
@@ -382,6 +376,80 @@ ${this.getNextPhaseGuidelines(phaseData.phase)}
       return true;
     } catch {
       return false;
+    }
+  }
+
+  /**
+   * Find existing document in multiple possible locations
+   */
+  private async findExistingDocument(projectId: string, fileName: string): Promise<string | null> {
+    const searchPaths = [
+      path.join(this.specDir, projectId, fileName),  // .spec/project/file.md (primary)
+      path.join(process.cwd(), fileName),            // current directory
+      path.join(process.cwd(), '.spec', projectId, fileName), // relative .spec path
+      // Note: removed projects/ path since we no longer duplicate files there
+    ];
+    
+    for (const searchPath of searchPaths) {
+      try {
+        await fs.access(searchPath);
+        return searchPath;
+      } catch {
+        continue;
+      }
+    }
+    return null;
+  }
+
+  /**
+   * Validate that a document has been properly updated (not just template)
+   * Token-efficient: simple pattern matching, no AI analysis
+   */
+  async validateDocumentCompletion(projectId: string, fileName: string): Promise<{ isComplete: boolean; reason?: string }> {
+    if (!this.enabled) return { isComplete: true };
+
+    try {
+      const existingPath = await this.findExistingDocument(projectId, fileName);
+      if (!existingPath) {
+        return { isComplete: false, reason: `${fileName} not found` };
+      }
+
+      const content = await fs.readFile(existingPath, 'utf-8');
+      
+      // Check for template markers that indicate incomplete work
+      const templateMarkers = [
+        '[Work with the AI to define',
+        '[AI: ',
+        '*Not yet started*',
+        '*Add user stories here',
+        '*Describe the high-level architecture',
+        '*Break down the work into specific',
+        'WHEN [event] THEN the system SHALL [response]', // Placeholder acceptance criteria
+        'As a [role], I want [feature]', // Placeholder user story
+      ];
+
+      const foundMarkers = templateMarkers.filter(marker => content.includes(marker));
+      
+      if (foundMarkers.length > 0) {
+        return { 
+          isComplete: false, 
+          reason: `Document contains template placeholders: ${foundMarkers.slice(0, 2).join(', ')}${foundMarkers.length > 2 ? '...' : ''}` 
+        };
+      }
+
+      // Check minimum content length (avoid stub documents)
+      const contentWithoutHeaders = content.replace(/^#.*$/gm, '').trim();
+      if (contentWithoutHeaders.length < 200) {
+        return { 
+          isComplete: false, 
+          reason: `Document too short (${contentWithoutHeaders.length} chars). Needs substantial content.` 
+        };
+      }
+
+      return { isComplete: true };
+
+    } catch (error) {
+      return { isComplete: false, reason: `Error reading ${fileName}: ${error}` };
     }
   }
 
